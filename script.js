@@ -999,15 +999,6 @@ function initEventListeners(){
   // Import/Export
   $('#btnImport').addEventListener('click', ()=> $('#fileInput').click());
   $('#fileInput').addEventListener('change', handleFile, false);
-  $('#btnLoadDatabase').addEventListener('click', async ()=>{
-    const dbLoaded = await loadDatabaseFile();
-    if(dbLoaded) {
-      refreshAll();
-      alert('הנתונים נטענו בהצלחה מ-db.xlsx');
-    } else {
-      alert('לא ניתן לטעון את db.xlsx. בדוק שהקובץ קיים בתיקייה.');
-    }
-  });
   $('#btnExport').addEventListener('click', exportExcel);
 
   // Auto-fill end time when start time is set
@@ -1104,118 +1095,6 @@ function initEventListeners(){
 
   // Handle theme toggle
   $('#themeToggle').addEventListener('click', toggleTheme);
-}
-
-async function loadDatabaseFile(){
-  console.log('Attempting to load db.xlsx...');
-  try {
-    // Try to fetch db.xlsx from the same directory as index.html
-    const response = await fetch('./db.xlsx');
-    console.log('Fetch response status:', response.status);
-    if(!response.ok) {
-      console.log('db.xlsx file not found or not accessible');
-      return false; // File doesn't exist
-    }
-    
-    if(typeof XLSX === 'undefined') {
-      console.log('XLSX library not loaded, skipping database file');
-      return false;
-    }
-    console.log('XLSX library is available');
-    
-    const data = await response.arrayBuffer();
-    const wb = XLSX.read(data, { type:'array' });
-    const wsName = wb.SheetNames[0];
-    const ws = wb.Sheets[wsName];
-    const json = XLSX.utils.sheet_to_json(ws, { defval:'' });
-    
-    if(!json.length) {
-      console.log('Database file is empty');
-      return false;
-    }
-    
-    // Use default column mapping (first row headers)
-    const headers = Object.keys(json[0]);
-    console.log('Available columns in db.xlsx:', headers);
-    
-    // Map columns using default names (case-insensitive matching)
-    const colTitle = headers.find(h=>/title|job|task|משימה|name|שם/i.test(h)) || headers[0];
-    const colFactory = headers.find(h=>/factory|מפעל|plant|facility/i.test(h)) || '';
-    const colWorker = headers.find(h=>/worker|עובד|employee|staff|מבצע|executor/i.test(h)) || '';
-    const colFactoryManager = headers.find(h=>/factory.*manager|מפקח|supervisor|supervise|מנהל.*מפעל/i.test(h)) || '';
-    const colMaintenanceManager = headers.find(h=>/maintenance.*manager|מנהל.*עבודה|maintenance|אחזקה/i.test(h)) || '';
-    const colPriority = headers.find(h=>/priority|עדיפות|urgent|importance/i.test(h)) || '';
-    const colEquipmentNumber = headers.find(h=>/equipment|ציוד|number|מספר|machine|device|מכונה/i.test(h)) || '';
-    const colServiceCall = headers.find(h=>/service.*call|קריאת.*שירות|service|ticket|call|שירות/i.test(h)) || '';
-    const colDepartment = headers.find(h=>/department|מחלקה|dept|unit|יחידה/i.test(h)) || '';
-    const colStart = headers.find(h=>/start|begin|התחלה|from|start.*time|start.*date/i.test(h)) || '';
-    const colEnd = headers.find(h=>/end|finish|סיום|to|end.*time|end.*date|due/i.test(h)) || '';
-    const colDependsOn = headers.find(h=>/depend|תלוי|dependency|prerequisite|קודם/i.test(h)) || '';
-    const colNotes = headers.find(h=>/note|remark|remarks|הערה|comment|comments|הערות|תיאור|description|desc|details|פרטים/i.test(h)) || '';
-    
-    // Clear existing data
-    JOBS = [];
-    FACTORIES.clear();
-    WORKERS.clear();
-    FACTORY_MANAGERS.clear();
-    MAINTENANCE_MANAGERS.clear();
-    DEPARTMENTS.clear();
-    nextId = 1;
-    
-    // Import data
-    const imported = json.map(row=>{
-      const factory = String(row[colFactory]||'').trim();
-      const worker = String(row[colWorker]||'').trim();
-      const factoryManager = String(row[colFactoryManager]||'').trim();
-      const maintenanceManager = String(row[colMaintenanceManager]||'').trim();
-      const department = String(row[colDepartment]||'').trim();
-      
-      // Add to sets
-      if(factory) FACTORIES.add(factory);
-      if(worker) WORKERS.add(worker);
-      if(factoryManager) FACTORY_MANAGERS.add(factoryManager);
-      if(maintenanceManager) MAINTENANCE_MANAGERS.add(maintenanceManager);
-      if(department) DEPARTMENTS.add(department);
-      
-      // Parse dates if available
-      let startDate = '';
-      let endDate = '';
-      if(colStart && row[colStart]) {
-        const start = dayjs(row[colStart]);
-        startDate = start.isValid() ? start.format() : '';
-      }
-      if(colEnd && row[colEnd]) {
-        const end = dayjs(row[colEnd]);
-        endDate = end.isValid() ? end.format() : '';
-      }
-      
-      return {
-        id: uid(),
-        title: String(row[colTitle]||'').trim(),
-        factory: factory,
-        worker: worker,
-        factoryManager: factoryManager,
-        maintenanceManager: maintenanceManager,
-        priority: String(row[colPriority]||'').trim(),
-        equipmentNumber: String(row[colEquipmentNumber]||'').trim(),
-        serviceCall: String(row[colServiceCall]||'').trim(),
-        department: department,
-        start: startDate,
-        end: endDate,
-        dependsOn: String(row[colDependsOn]||'').trim(),
-        notes: String(row[colNotes]||'').trim(),
-        finished: false
-      };
-    });
-    
-    JOBS = imported;
-    console.log(`Loaded ${imported.length} records from db.xlsx`);
-    return true;
-    
-  } catch (error) {
-    console.log('No db.xlsx file found or error loading it:', error.message);
-    return false;
-  }
 }
 
 async function handleFile(evt){
@@ -1409,25 +1288,17 @@ function toggleTheme() {
 }
 
 // Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', async ()=>{
+document.addEventListener('DOMContentLoaded', ()=>{
   // Initialize theme
   initTheme();
   
   // Load column visibility settings
   loadColumnVisibility();
   
-  // Try to load from localStorage first, if not found, try database file, then seed with demo data
+  // Try to load from localStorage first, if not found, seed with demo data
   const loaded = loadFromLocalStorage();
-  console.log('localStorage loaded:', loaded, 'JOBS length:', JOBS.length);
   if(!loaded) {
-    // Wait a bit for XLSX library to load, then try database file
-    setTimeout(async () => {
-      const dbLoaded = await loadDatabaseFile();
-      if(!dbLoaded) {
-        seed();
-      }
-      refreshAll();
-    }, 100);
+    seed();
   }
   initEventListeners();
   refreshAll();
