@@ -836,3 +836,18 @@ dialog footer {
   overflow: hidden;
 }
 
+/* Table column widths */
+th[data-column="start"],
+th[data-column="end"],
+td[data-column="start"],
+td[data-column="end"] {
+  min-width: 150px;
+}
+
+th[data-column="flags"],
+td[data-column="flags"],
+th[data-column="notes"],
+td[data-column="notes"] {
+  min-width: 220px;
+}
+
