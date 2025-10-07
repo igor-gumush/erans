@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>מתזמן משימות למפעל</title>
+  <!-- External libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/dayjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/utc.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/timezone.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/customParseFormat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/isSameOrBefore.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dayjs@1/plugin/minMax.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <!-- Pico CSS (dark theme) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.slate.min.css">
+  <!-- Custom styles -->
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header>
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <div>
+        <h1>מתזמן משימות למפעל</h1>
+        <div class="sub"> מעקב אחר תלויות. ירוק = הושלם | אדום = קונפליקט | כתום = בעיות תלות | צהוב = שבת.</div>
+      </div>
+      <div class="theme-toggle">
+        <button id="themeToggle" class="btn" title="החלף מצב תצוגה">
+          <span id="themeIcon">🌙</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Filter Panel (Top, Collapsible) -->
+  <div class="filter-top-panel" id="filterTopPanel">
+    <div class="filter-top-header">
+      <h2>🔍 סינון וכלים</h2>
+      <button class="btn-collapse-top" id="btnToggleTopFilters" title="החלף סינון">▼</button>
+    </div>
+    <div class="filter-top-content" id="filterTopContent">
+      <div class="filter-grid">
+        <div class="filter-col">
+          <label>מפעל</label>
+          <select id="fltFactory"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>עובד מבצע</label>
+          <select id="fltWorker"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>מנהל המפעל</label>
+          <select id="fltFactoryManager"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>מנהל האחזקה</label>
+          <select id="fltMaintenanceManager"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>עדיפות</label>
+          <select id="fltPriority"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>מספר ציוד</label>
+          <input id="fltEquipmentNumber" type="text" placeholder="חפש מספר ציוד" />
+        </div>
+        <div class="filter-col">
+          <label>קריאת שירות</label>
+          <input id="fltServiceCall" type="text" placeholder="חפש קריאת שירות" />
+        </div>
+        <div class="filter-col">
+          <label>מחלקה מבצעת</label>
+          <select id="fltDepartment"><option value="">הכל</option></select>
+        </div>
+        <div class="filter-col">
+          <label>סטטוס</label>
+          <select id="fltStatus">
+            <option value="">הכל</option>
+            <option value="finished">הושלם</option>
+            <option value="unfinished">לא הושלם</option>
+          </select>
+        </div>
+        <div class="filter-col">
+          <label>מתאריך</label>
+          <input id="fltFrom" type="date" />
+        </div>
+        <div class="filter-col">
+          <label>עד תאריך</label>
+          <input id="fltTo" type="date" />
+        </div>
+        <div class="filter-col">
+          <label>חיפוש</label>
+          <input id="fltSearch" type="text" placeholder="חפש משימה/הערות" />
+        </div>
+      </div>
+      <div class="filter-options">
+        <label class="switch"><input id="fltConflictsOnly" type="checkbox"/> הצג קונפליקטים</label>
+        <label class="switch"><input id="fltDependencyIssuesOnly" type="checkbox"/> הצג בעיות תלות</label>
+        <label class="switch"><input id="fltShowBoth" type="checkbox"/> הצג קונפליקטים ותלויות</label>
+      </div>
+      <div class="filter-actions">
+        <button class="btn" id="btnClearFilters">נקה סינון</button>
+        <div class="spacer"></div>
+        <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" />
+        <button class="btn" id="btnImport">📥 ייבוא Excel</button>
+        <button class="btn" id="btnExport">📤 ייצוא Excel</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <!-- Main: Views -->
+    <section class="card">
+      <div class="view-header">
+        <div class="tabs">
+          <div class="tab active" data-tab="table">טבלה</div>
+          <div class="tab" data-tab="timeline">ציר זמן (ליום)</div>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+          <button id="btnToggleColumnControls" class="btn-icon" title="הצג בקרות עמודות" style="padding: 0.5rem; font-size: 1rem;">🔧</button>
+          <button class="btn primary" id="btnOpenJobModal">➕ צור משימה</button>
+        </div>
+      </div>
+
+      <!-- TABLE VIEW -->
+      <div id="view-table" style="margin-top:10px">
+        <!-- Column Visibility Controls -->
+        <div class="column-controls" id="columnControls" style="margin-bottom: 1rem; padding: 0.75rem; background: var(--pico-card-sectioning-background-color); border-radius: 0.375rem; border: 1px solid var(--pico-muted-border-color); display: none;">
+          <div style="margin-bottom: 0.5rem;">
+            <label style="font-weight: 600; margin: 0;">הצג עמודות:</label>
+          </div>
+          <div class="column-checkboxes" style="display: flex; flex-wrap: wrap; gap: 1rem;">
+            <label class="switch"><input type="checkbox" data-column="title" checked/> משימה</label>
+            <label class="switch"><input type="checkbox" data-column="factory" checked/> מפעל</label>
+            <label class="switch"><input type="checkbox" data-column="worker" checked/> עובד מבצע</label>
+            <label class="switch"><input type="checkbox" data-column="factoryManager" checked/> מפקח עבודה</label>
+            <label class="switch"><input type="checkbox" data-column="maintenanceManager" checked/> מנהל עבודה</label>
+            <label class="switch"><input type="checkbox" data-column="priority" checked/> עדיפות</label>
+            <label class="switch"><input type="checkbox" data-column="equipmentNumber" checked/> מספר ציוד</label>
+            <label class="switch"><input type="checkbox" data-column="serviceCall" checked/> קריאת שירות</label>
+            <label class="switch"><input type="checkbox" data-column="department" checked/> מחלקה מבצעת</label>
+            <label class="switch"><input type="checkbox" data-column="start" checked/> התחלה</label>
+            <label class="switch"><input type="checkbox" data-column="end" checked/> סיום</label>
+            <label class="switch"><input type="checkbox" data-column="duration" checked/> משך</label>
+            <label class="switch"><input type="checkbox" data-column="notes" checked/> הערות</label>
+            <label class="switch"><input type="checkbox" data-column="flags" checked/> דגלים</label>
+            <label class="switch"><input type="checkbox" data-column="actions" checked/> פעולות</label>
+          </div>
+        </div>
+        
+        <!-- Scrollable Table Container -->
+        <div class="table-container" style="overflow-x: auto; border: 1px solid var(--pico-muted-border-color); border-radius: 0.375rem;">
+          <table id="main-table" style="min-width: 100%;">
+            <thead>
+              <tr>
+                <th style="width:36px">#</th>
+                <th data-sort="title" class="sortable" data-column="title">משימה</th>
+                <th data-sort="factory" class="sortable" data-column="factory">מפעל</th>
+                <th data-sort="worker" class="sortable" data-column="worker">עובד מבצע</th>
+                <th data-sort="factoryManager" class="sortable" data-column="factoryManager">מפקח עבודה</th>
+                <th data-sort="maintenanceManager" class="sortable" data-column="maintenanceManager">מנהל עבודה</th>
+                <th data-sort="priority" class="sortable" data-column="priority">עדיפות</th>
+                <th data-sort="equipmentNumber" class="sortable" data-column="equipmentNumber">מספר ציוד</th>
+                <th data-sort="serviceCall" class="sortable" data-column="serviceCall">קריאת שירות</th>
+                <th data-sort="department" class="sortable" data-column="department">מחלקה מבצעת</th>
+                <th data-sort="start" class="sortable sort-asc" data-column="start">התחלה</th>
+                <th data-sort="end" class="sortable" data-column="end">סיום</th>
+                <th data-sort="duration" class="sortable" data-column="duration">משך</th>
+                <th data-sort="notes" class="sortable" data-column="notes">הערות</th>
+                <th data-column="flags">דגלים</th>
+                <th style="width:110px; text-align:center" data-column="actions">פעולות</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"></tbody>
+          </table>
+        </div>
+        <div id="emptyTable" class="empty" style="display:none">אין משימות עדיין. הוסף או ייבא מ-Excel.</div>
+      </div>
+
+      <!-- TIMELINE VIEW -->
+      <div id="view-timeline" style="display:none; margin-top:12px;">
+        <div class="timeline-head">
+          <label>תאריך</label>
+          <input id="tl-date" type="date" />
+          <span class="muted">כל נתיב הוא עובד מבצע • סולם 24 שעות • ירוק = הושלם • אדום = קונפליקט • כתום = בעיות תלות • צהוב = שבת • 🖱️ גרור ושחרר לשינוי זמן</span>
+        </div>
+        <div id="timeline" class="timeline"></div>
+        <div id="emptyTimeline" class="empty" style="display:none">אין משימות בתאריך שנבחר.</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Modal for Create/Edit Job -->
+  <dialog id="jobModal">
+    <article>
+      <header>
+        <h3 id="modalTitle">צור משימה</h3>
+        <button aria-label="סגור" class="close" id="btnCloseModal">✕</button>
+      </header>
+      <div class="modal-body">
+        <div class="row">
+          <div style="flex:1">
+            <label>משימה</label>
+            <input id="f-title" type="text" placeholder="לדוגמה, תחזוקת קו A" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>מפעל</label>
+            <select id="f-factory">
+              <option value="">בחר מפעל...</option>
+              <option value="__add_new__">➕ הוסף מפעל חדש</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label>עובד מבצע</label>
+            <select id="f-worker">
+              <option value="">בחר עובד מבצע...</option>
+              <option value="__add_new__">➕ הוסף עובד מבצע חדש</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>מנהל המפעל</label>
+            <select id="f-factoryManager">
+              <option value="">בחר מפקח עבודה...</option>
+              <option value="__add_new__">➕ הוסף מפקח עבודה חדש</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label>מנהל האחזקה</label>
+            <select id="f-maintenanceManager">
+              <option value="">בחר מנהל עבודה...</option>
+              <option value="__add_new__">➕ הוסף מנהל עבודה חדש</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>עדיפות</label>
+            <select id="f-priority">
+              <option value="">בחר עדיפות...</option>
+              <option value="נמוכה">נמוכה</option>
+              <option value="בינונית">בינונית</option>
+              <option value="גבוהה">גבוהה</option>
+              <option value="דחופה">דחופה</option>
+            </select>
+          </div>
+          <div style="flex:1">
+            <label>מספר ציוד</label>
+            <input id="f-equipmentNumber" type="text" placeholder="לדוגמה, EQ-001" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>קריאת שירות</label>
+            <input id="f-serviceCall" type="text" placeholder="מספר קריאת שירות" />
+          </div>
+          <div style="flex:1">
+            <label>מחלקה מבצעת</label>
+            <select id="f-department">
+              <option value="">בחר מחלקה...</option>
+              <option value="__add_new__">➕ הוסף מחלקה חדשה</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>התחלה (תאריך ושעה)</label>
+            <input id="f-start" type="datetime-local" step="900" />
+          </div>
+          <div style="flex:1">
+            <label>סיום (תאריך ושעה)</label>
+            <input id="f-end" type="datetime-local" step="900" />
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>תלוי ב (אופציונלי)</label>
+            <select id="f-dependsOn">
+              <option value="">ללא תלות</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div style="flex:1">
+            <label>הערות</label>
+            <textarea id="f-notes" placeholder="הערות אופציונליות" rows="3"></textarea>
+          </div>
+        </div>
+      </div>
+      <footer>
+        <button class="btn primary" id="btnSaveJob">שמור משימה</button>
+        <button class="btn ghost" id="btnResetModal">איפוס</button>
+        <div class="spacer"></div>
+        <button class="btn danger" id="btnDeleteModal" style="display:none;">מחק</button>
+      </footer>
+    </article>
+  </dialog>
+
+  <div class="footer">טיפ: דיוק הזמן מקובע ל-15 דקות. חפיפות לאותו עובד מבצע מסומנות כקונפליקט (אדום). יום שישי 18:00-23:59 ושבת מסומנים (צהוב).</div>
+
+  <!-- Application script -->
+  <script src="script.js"></script>
+</body>
+</html>
+
