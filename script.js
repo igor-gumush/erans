@@ -317,6 +317,11 @@ function renderTable(){
   const rows = JOBS.filter(passFilters);
   $('#emptyTable').style.display = rows.length? 'none':'block';
   
+  // Setup scroll sync after a short delay to ensure table is rendered
+  setTimeout(() => {
+    setupTableScrollSync();
+  }, 100);
+  
   // Sort rows based on current sort state
   rows.sort((a,b)=> {
     let valA, valB;
@@ -666,7 +671,13 @@ function renderTimeline(){
       const depInfo = j.dependsOn ? JOBS.find(dj=>dj.id===j.dependsOn) : null;
       const depText = depInfo ? ` → ${depInfo.title||'תל'}` : '';
       div.title = `${j.title||''} | ${fmt(j.start)} → ${fmt(j.end)} | ${j.factory}${depText}`;
-      div.textContent = j.title || '(ללא כותרת)';
+      
+      // Add resize handles and label
+      div.innerHTML = `
+        <div class="timeline-resize-handle timeline-resize-left" data-edge="start"></div>
+        <span class="jobbar-label">${escapeHtml(j.title || '(ללא כותרת)')}</span>
+        <div class="timeline-resize-handle timeline-resize-right" data-edge="end"></div>
+      `;
       
       // Make draggable
       div.draggable = true;
@@ -678,8 +689,15 @@ function renderTimeline(){
       let dragMoved = false;
       
       div.addEventListener('mousedown', (e) => {
+        // Don't start drag if clicking on resize handles
+        if (e.target.classList.contains('timeline-resize-handle')) {
+          e.stopPropagation();
+          div.draggable = false;
+          return;
+        }
         dragStartTime = Date.now();
         dragMoved = false;
+        div.draggable = true;
       });
       
       div.addEventListener('mousemove', (e) => {
@@ -689,6 +707,10 @@ function renderTimeline(){
       });
       
       div.addEventListener('click', (e) => {
+        // Don't open modal if clicking on resize handles
+        if (e.target.classList.contains('timeline-resize-handle')) {
+          return;
+        }
         const clickDuration = Date.now() - dragStartTime;
         // If it was a quick click (not a drag), open edit modal
         if (clickDuration < 300 && !dragMoved) {
@@ -699,6 +721,11 @@ function renderTimeline(){
       });
       
       div.addEventListener('dragstart', (e) => {
+        // Prevent drag if clicking on resize handles
+        if (e.target.classList.contains('timeline-resize-handle')) {
+          e.preventDefault();
+          return;
+        }
         dragMoved = true; // Mark as drag
         div.style.cursor = 'grabbing';
         div.style.opacity = '0.5';
@@ -721,6 +748,18 @@ function renderTimeline(){
         dragStartTime = 0;
         dragMoved = false;
       });
+      
+      // Add resize functionality
+      const leftHandle = div.querySelector('.timeline-resize-left');
+      const rightHandle = div.querySelector('.timeline-resize-right');
+      
+      if (leftHandle) {
+        leftHandle.addEventListener('mousedown', (e) => startTimelineResize(e, div, j, 'start', grid));
+      }
+      
+      if (rightHandle) {
+        rightHandle.addEventListener('mousedown', (e) => startTimelineResize(e, div, j, 'end', grid));
+      }
       
       grid.appendChild(div);
     });
@@ -770,6 +809,119 @@ function renderTimeline(){
   }
 
   if(byWorker.size===0){ host.innerHTML=''; }
+  
+  // Setup scroll sync after a short delay to ensure timeline is rendered
+  setTimeout(() => {
+    setupTimelineScrollSync();
+  }, 100);
+}
+
+// Timeline resize functionality
+let timelineResizeState = {
+  isResizing: false,
+  jobId: null,
+  edge: null,
+  startX: 0,
+  originalStart: null,
+  originalEnd: null,
+  grid: null,
+  bar: null
+};
+
+function startTimelineResize(e, bar, job, edge, grid) {
+  e.preventDefault();
+  e.stopPropagation();
+  
+  // Ensure drag is disabled
+  bar.draggable = false;
+  
+  timelineResizeState = {
+    isResizing: true,
+    jobId: job.id,
+    edge: edge,
+    startX: e.clientX,
+    originalStart: dayjs(job.start),
+    originalEnd: dayjs(job.end),
+    grid: grid,
+    bar: bar
+  };
+  
+  bar.classList.add('resizing');
+  document.body.style.cursor = 'ew-resize';
+  
+  // Add global mouse move and mouse up listeners
+  document.addEventListener('mousemove', handleTimelineResize);
+  document.addEventListener('mouseup', stopTimelineResize);
+}
+
+function handleTimelineResize(e) {
+  if (!timelineResizeState.isResizing) return;
+  
+  const job = JOBS.find(j => j.id === timelineResizeState.jobId);
+  if (!job) return;
+  
+  // Calculate pixel difference
+  const dx = e.clientX - timelineResizeState.startX;
+  
+  // Convert pixels to minutes (88px per hour = 44px per 30min)
+  const minutesPerPixel = 60 / 88; // 88px = 1 hour
+  const minutesDiff = Math.round(dx * minutesPerPixel / 15) * 15; // Round to 15 minutes
+  
+  if (timelineResizeState.edge === 'start') {
+    // Resize from the left (change start time)
+    const newStart = timelineResizeState.originalStart.clone().add(minutesDiff, 'minutes');
+    // Ensure start doesn't go past end (minimum 15 minutes duration)
+    if (newStart.isBefore(timelineResizeState.originalEnd.clone().subtract(15, 'minutes'))) {
+      job.start = newStart.format();
+    }
+  } else if (timelineResizeState.edge === 'end') {
+    // Resize from the right (change end time)
+    const newEnd = timelineResizeState.originalEnd.clone().add(minutesDiff, 'minutes');
+    // Ensure end doesn't go before start (minimum 15 minutes duration)
+    if (newEnd.isAfter(timelineResizeState.originalStart.clone().add(15, 'minutes'))) {
+      job.end = newEnd.format();
+    }
+  }
+  
+  // Update the display
+  renderTimeline();
+}
+
+function stopTimelineResize(e) {
+  if (!timelineResizeState.isResizing) return;
+  
+  // Use the stored bar reference
+  if (timelineResizeState.bar) {
+    timelineResizeState.bar.classList.remove('resizing');
+    // Re-enable drag after a short delay to prevent immediate drag
+    setTimeout(() => {
+      if (timelineResizeState.bar) {
+        timelineResizeState.bar.draggable = true;
+      }
+    }, 100);
+  }
+  
+  document.body.style.cursor = '';
+  
+  // Remove global listeners
+  document.removeEventListener('mousemove', handleTimelineResize);
+  document.removeEventListener('mouseup', stopTimelineResize);
+  
+  // Save changes and refresh all views
+  if (timelineResizeState.isResizing) {
+    refreshAll();
+  }
+  
+  timelineResizeState = {
+    isResizing: false,
+    jobId: null,
+    edge: null,
+    startX: 0,
+    originalStart: null,
+    originalEnd: null,
+    grid: null,
+    bar: null
+  };
 }
 
 function saveToLocalStorage(){
@@ -789,6 +941,10 @@ function refreshAll(){
   renderTable();
   renderTimeline();
   updateColumnVisibility();
+  // Update Gantt chart if it exists
+  if (typeof updateGantt === 'function') {
+    updateGantt();
+  }
   saveToLocalStorage(); // Auto-save on every change
 }
 
@@ -861,6 +1017,81 @@ function closeJobModal() {
   modal.close();
   setForm({});
   editingId = null;
+}
+
+function setupTableScrollSync() {
+  const topScroll = document.querySelector('.table-scroll-top');
+  const bottomScroll = document.querySelector('.table-container');
+  const topInner = document.querySelector('.table-scroll-top-inner');
+  const table = document.querySelector('#main-table');
+  
+  if (!topScroll || !bottomScroll || !topInner || !table) return;
+  
+  // Set the width of the inner div to match the table width
+  const syncWidth = () => {
+    topInner.style.width = table.scrollWidth + 'px';
+  };
+  
+  syncWidth();
+  
+  // Sync scroll positions
+  let isScrolling = false;
+  
+  topScroll.addEventListener('scroll', () => {
+    if (!isScrolling) {
+      isScrolling = true;
+      bottomScroll.scrollLeft = topScroll.scrollLeft;
+      setTimeout(() => { isScrolling = false; }, 10);
+    }
+  });
+  
+  bottomScroll.addEventListener('scroll', () => {
+    if (!isScrolling) {
+      isScrolling = true;
+      topScroll.scrollLeft = bottomScroll.scrollLeft;
+      setTimeout(() => { isScrolling = false; }, 10);
+    }
+  });
+  
+  // Update width on window resize
+  window.addEventListener('resize', syncWidth);
+}
+
+function setupTimelineScrollSync() {
+  const topScroll = document.querySelector('.timeline-scroll-top');
+  const bottomScroll = document.querySelector('.timeline');
+  const topInner = document.querySelector('.timeline-scroll-top-inner');
+  
+  if (!topScroll || !bottomScroll || !topInner) return;
+  
+  // Set the width of the inner div to match the timeline width
+  const syncWidth = () => {
+    topInner.style.width = bottomScroll.scrollWidth + 'px';
+  };
+  
+  syncWidth();
+  
+  // Sync scroll positions
+  let isScrolling = false;
+  
+  topScroll.addEventListener('scroll', () => {
+    if (!isScrolling) {
+      isScrolling = true;
+      bottomScroll.scrollLeft = topScroll.scrollLeft;
+      setTimeout(() => { isScrolling = false; }, 10);
+    }
+  });
+  
+  bottomScroll.addEventListener('scroll', () => {
+    if (!isScrolling) {
+      isScrolling = true;
+      topScroll.scrollLeft = bottomScroll.scrollLeft;
+      setTimeout(() => { isScrolling = false; }, 10);
+    }
+  });
+  
+  // Update width on window resize
+  window.addEventListener('resize', syncWidth);
 }
 
 function initEventListeners(){
@@ -989,7 +1220,14 @@ function initEventListeners(){
     const name = tab.getAttribute('data-tab');
     $('#view-table').style.display = name==='table'? 'block':'none';
     $('#view-timeline').style.display = name==='timeline'? 'block':'none';
+    $('#view-gantt').style.display = name==='gantt'? 'block':'none';
     if(name==='timeline') renderTimeline();
+    if(name==='gantt') {
+      // Initialize Gantt if not already done
+      if (typeof initGantt === 'function') {
+        initGantt();
+      }
+    }
   }));
 
   // Timeline date default = today
@@ -1230,7 +1468,89 @@ function exportExcel(){
 
 // Initialize empty data
 function seed(){
-  // No dummy data - start with empty state
+  // Add some sample data for testing
+  const now = dayjs();
+  JOBS = [
+    {
+      id: '1',
+      title: 'תחזוקת קו A',
+      factory: 'מפעל צפון',
+      worker: 'יוסי כהן',
+      factoryManager: 'דוד לוי',
+      maintenanceManager: 'שרה גולד',
+      priority: 'גבוהה',
+      equipmentNumber: 'EQ-001',
+      serviceCall: 'SC-2024-001',
+      department: 'אחזקה',
+      start: now.hour(8).minute(0).format(),
+      end: now.hour(12).minute(0).format(),
+      dependsOn: '',
+      notes: 'תחזוקה תקופתית',
+      finished: false
+    },
+    {
+      id: '2',
+      title: 'החלפת חלק בקו B',
+      factory: 'מפעל דרום',
+      worker: 'מיכל אברהם',
+      factoryManager: 'רונן שטרן',
+      maintenanceManager: 'שרה גולד',
+      priority: 'דחופה',
+      equipmentNumber: 'EQ-002',
+      serviceCall: 'SC-2024-002',
+      department: 'אחזקה',
+      start: now.hour(10).minute(0).format(),
+      end: now.hour(14).minute(0).format(),
+      dependsOn: '1',
+      notes: 'החלפת מנוע',
+      finished: false
+    },
+    {
+      id: '3',
+      title: 'בדיקת בטיחות',
+      factory: 'מפעל צפון',
+      worker: 'יוסי כהן',
+      factoryManager: 'דוד לוי',
+      maintenanceManager: 'שרה גולד',
+      priority: 'בינונית',
+      equipmentNumber: 'EQ-003',
+      serviceCall: 'SC-2024-003',
+      department: 'בטיחות',
+      start: now.add(1, 'day').hour(9).minute(0).format(),
+      end: now.add(1, 'day').hour(11).minute(0).format(),
+      dependsOn: '',
+      notes: 'בדיקה חודשית',
+      finished: true
+    },
+    {
+      id: '4',
+      title: 'תחזוקת קו C',
+      factory: 'מפעל דרום',
+      worker: 'מיכל אברהם',
+      factoryManager: 'רונן שטרן',
+      maintenanceManager: 'שרה גולד',
+      priority: 'נמוכה',
+      equipmentNumber: 'EQ-004',
+      serviceCall: 'SC-2024-004',
+      department: 'אחזקה',
+      start: now.add(2, 'day').hour(14).minute(0).format(),
+      end: now.add(2, 'day').hour(18).minute(0).format(),
+      dependsOn: '',
+      notes: 'תחזוקה שבועית',
+      finished: false
+    }
+  ];
+  
+  // Update sets
+  JOBS.forEach(job => {
+    if (job.factory) FACTORIES.add(job.factory);
+    if (job.worker) WORKERS.add(job.worker);
+    if (job.factoryManager) FACTORY_MANAGERS.add(job.factoryManager);
+    if (job.maintenanceManager) MAINTENANCE_MANAGERS.add(job.maintenanceManager);
+    if (job.department) DEPARTMENTS.add(job.department);
+  });
+  
+  nextId = 4;
 }
 
 function loadFromLocalStorage(){

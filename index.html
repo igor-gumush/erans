@@ -115,6 +115,7 @@
         <div class="tabs">
           <div class="tab active" data-tab="table">טבלה</div>
           <div class="tab" data-tab="timeline">ציר זמן (ליום)</div>
+          <div class="tab" data-tab="gantt">גאנט</div>
         </div>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <button id="btnToggleColumnControls" class="btn-icon" title="הצג בקרות עמודות" style="padding: 0.5rem; font-size: 1rem;">🔧</button>
@@ -148,8 +149,13 @@
           </div>
         </div>
         
-        <!-- Scrollable Table Container -->
-        <div class="table-container" style="overflow-x: auto; border: 1px solid var(--pico-muted-border-color); border-radius: 0.375rem;">
+        <!-- Scrollable Table Container with top scrollbar -->
+        <div class="table-scroll-top-wrapper">
+          <div class="table-scroll-top">
+            <div class="table-scroll-top-inner"></div>
+          </div>
+        </div>
+        <div class="table-container" id="table-container">
           <table id="main-table" style="min-width: 100%;">
             <thead>
               <tr>
@@ -184,8 +190,56 @@
           <input id="tl-date" type="date" />
           <span class="muted">כל נתיב הוא עובד מבצע • סולם 24 שעות • ירוק = הושלם • אדום = קונפליקט • כתום = בעיות תלות • צהוב = שבת • 🖱️ גרור ושחרר לשינוי זמן</span>
         </div>
+        <div class="timeline-scroll-top-wrapper">
+          <div class="timeline-scroll-top">
+            <div class="timeline-scroll-top-inner"></div>
+          </div>
+        </div>
         <div id="timeline" class="timeline"></div>
         <div id="emptyTimeline" class="empty" style="display:none">אין משימות בתאריך שנבחר.</div>
+      </div>
+
+      <!-- GANTT VIEW -->
+      <div id="view-gantt" style="display:none; margin-top:12px;">
+        <div class="gantt-controls">
+          <div class="gantt-date-controls">
+            <label>מתאריך:</label>
+            <input id="gantt-start-date" type="date" />
+            <label>עד תאריך:</label>
+            <input id="gantt-end-date" type="date" />
+            <button id="gantt-apply-dates" class="btn primary">החל</button>
+          </div>
+          <div class="gantt-zoom-controls">
+            <button id="gantt-zoom-out" class="btn" title="הקטן">-</button>
+            <span id="gantt-zoom-level">100%</span>
+            <button id="gantt-zoom-in" class="btn" title="הגדל">+</button>
+          </div>
+          <div class="gantt-scale-controls">
+            <label class="switch">
+              <input type="checkbox" id="gantt-show-hours" checked />
+              הצג שעות
+            </label>
+          </div>
+        </div>
+        <div class="gantt-container">
+          <div class="gantt-header">
+            <div class="gantt-left-panel">
+              <div class="gantt-task-header">משימה</div>
+            </div>
+            <div class="gantt-right-panel">
+              <div class="gantt-time-header" id="gantt-time-header"></div>
+            </div>
+          </div>
+          <div class="gantt-content">
+            <div class="gantt-left-panel" id="gantt-task-names"></div>
+            <div class="gantt-right-panel">
+              <div class="gantt-grid-container">
+                <div class="gantt-grid" id="gantt-grid"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div id="emptyGantt" class="empty" style="display:none">אין משימות לתצוגת גאנט.</div>
       </div>
     </section>
   </div>
@@ -303,6 +357,7 @@
 
   <!-- Application script -->
   <script src="script.js"></script>
+  <script src="gantt.js"></script>
 </body>
 </html>
 

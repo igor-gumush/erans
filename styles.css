@@ -68,7 +68,7 @@ header .sub {
 /* Layout */
 .wrap { 
   padding: 1.5rem 2rem; 
-  max-width: 1600px;
+  max-width: 100%;
   margin: 0 auto;
 }
 
@@ -520,9 +520,46 @@ tbody td {
   font-size: 0.875rem;
 }
 
+/* Top scrollbar for timeline */
+.timeline-scroll-top-wrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
+.timeline-scroll-top {
+  height: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 8px;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0.5rem 0.5rem 0 0;
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.timeline-scroll-top-inner {
+  height: 1px;
+}
+
+.timeline-scroll-top::-webkit-scrollbar {
+  height: 12px;
+}
+
+.timeline-scroll-top::-webkit-scrollbar-track {
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.timeline-scroll-top::-webkit-scrollbar-thumb {
+  background: var(--pico-muted-border-color);
+  border-radius: 6px;
+}
+
+.timeline-scroll-top::-webkit-scrollbar-thumb:hover {
+  background: var(--pico-primary);
+}
+
 .timeline { 
   border: 1px solid var(--pico-muted-border-color); 
-  border-radius: 0.5rem; 
+  border-radius: 0 0 0.5rem 0.5rem; 
   overflow-x: auto; 
   overflow-y: hidden; 
 }
@@ -588,19 +625,21 @@ tbody td {
 
 .jobbar { 
   position: absolute; 
-  top: 8px; 
-  height: 28px; 
+  top: 2px; 
+  height: 40px; 
   border-radius: 0.375rem; 
   background: var(--pico-primary-background);
   border: 1px solid var(--pico-primary-border); 
-  padding: 0.25rem 0.5rem; 
-  font-size: 0.75rem; 
+  padding: 0.5rem; 
+  font-size: 0.875rem; 
   color: var(--pico-primary-inverse); 
   white-space: nowrap; 
   overflow: hidden; 
   text-overflow: ellipsis; 
   transition: opacity 0.2s, box-shadow 0.2s;
   cursor: grab;
+  display: flex;
+  align-items: center;
 }
 
 .jobbar:hover { 
@@ -609,6 +648,42 @@ tbody td {
 
 .jobbar[draggable="true"]:active { 
   cursor: grabbing !important; 
+}
+
+.jobbar.resizing {
+  opacity: 0.8 !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+/* Timeline resize handles */
+.timeline-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  z-index: 100;
+  transition: background-color 0.2s;
+  pointer-events: all;
+}
+
+.timeline-resize-handle:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.timeline-resize-left {
+  left: 0;
+  border-left: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.timeline-resize-right {
+  right: 0;
+  border-right: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.jobbar-label {
+  pointer-events: none;
+  flex: 1;
 }
 
 /* Hour labels */
@@ -849,5 +924,433 @@ td[data-column="flags"],
 th[data-column="notes"],
 td[data-column="notes"] {
   min-width: 220px;
+}
+
+th[data-column="title"],
+td[data-column="title"] {
+  min-width: 250px;
+}
+
+/* Top scrollbar for table */
+.table-scroll-top-wrapper {
+  width: 100%;
+  overflow: hidden;
+}
+
+.table-scroll-top {
+  height: 20px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-bottom: 8px;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0.375rem 0.375rem 0 0;
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.table-scroll-top-inner {
+  height: 1px;
+}
+
+.table-scroll-top::-webkit-scrollbar {
+  height: 12px;
+}
+
+.table-scroll-top::-webkit-scrollbar-track {
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.table-scroll-top::-webkit-scrollbar-thumb {
+  background: var(--pico-muted-border-color);
+  border-radius: 6px;
+}
+
+.table-scroll-top::-webkit-scrollbar-thumb:hover {
+  background: var(--pico-primary);
+}
+
+/* Table container with scroll */
+.table-container {
+  max-height: calc(100vh - 200px); /* Adjust 200px based on your header/filter height */
+  overflow-x: auto;
+  overflow-y: auto;
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0 0 0.375rem 0.375rem;
+}
+
+/* Ensure table takes full width within container */
+.table-container table {
+  width: 100%;
+  margin: 0;
+  border-collapse: collapse;
+}
+
+/* Sticky header */
+.table-container thead th {
+  position: sticky;
+  top: 0;
+  background: var(--pico-card-background-color);
+  z-index: 10;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+}
+
+/* Gantt Chart Styles */
+.gantt-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: var(--pico-card-sectioning-background-color);
+  border-radius: 0.375rem;
+  border: 1px solid var(--pico-muted-border-color);
+  flex-wrap: wrap;
+}
+
+.gantt-date-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.gantt-date-controls label {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.gantt-date-controls input[type="date"] {
+  margin: 0;
+  width: auto;
+}
+
+.gantt-zoom-controls {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.gantt-zoom-controls button {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  font-weight: bold;
+}
+
+.gantt-zoom-level {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--pico-color);
+  min-width: 40px;
+  text-align: center;
+}
+
+.gantt-scale-controls {
+  display: flex;
+  align-items: center;
+}
+
+.gantt-container {
+  border: 1px solid var(--pico-muted-border-color);
+  border-radius: 0.5rem;
+  overflow: hidden;
+  background: var(--pico-card-background-color);
+}
+
+.gantt-header {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  border-bottom: 2px solid var(--pico-muted-border-color);
+  background: var(--pico-card-sectioning-background-color);
+}
+
+.gantt-left-panel {
+  border-left: 1px solid var(--pico-muted-border-color);
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--pico-color);
+}
+
+.gantt-right-panel {
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: calc(100vw - 350px);
+}
+
+.gantt-right-panel::-webkit-scrollbar {
+  height: 12px;
+}
+
+.gantt-right-panel::-webkit-scrollbar-track {
+  background: var(--pico-card-sectioning-background-color);
+  border-radius: 6px;
+}
+
+.gantt-right-panel::-webkit-scrollbar-thumb {
+  background: var(--pico-muted-border-color);
+  border-radius: 6px;
+}
+
+.gantt-right-panel::-webkit-scrollbar-thumb:hover {
+  background: var(--pico-primary);
+}
+
+.gantt-time-header {
+  min-width: 100%;
+  height: 60px;
+  position: relative;
+  white-space: nowrap;
+}
+
+.gantt-days-row {
+  display: block;
+  height: 30px;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  min-width: max-content;
+  position: relative;
+}
+
+.gantt-day-header {
+  padding: 0.5rem;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--pico-color);
+  border-left: 1px solid var(--pico-muted-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  height: 100%;
+}
+
+.gantt-hours-row {
+  display: block;
+  height: 30px;
+  min-width: max-content;
+  position: relative;
+  overflow: visible;
+  border-top: 1px solid var(--pico-muted-border-color);
+}
+
+.gantt-day-hours {
+  display: block;
+  border-left: 1px solid var(--pico-muted-border-color);
+  flex-shrink: 0;
+  position: relative;
+  height: 30px;
+  overflow: visible;
+}
+
+.gantt-hour-header {
+  padding: 0.25rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--pico-color);
+  border-left: 1px solid var(--pico-muted-border-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: rgba(255, 255, 255, 0.2);
+  font-weight: 600;
+  z-index: 10;
+  min-width: 20px;
+}
+
+.gantt-content {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.gantt-task-names {
+  border-left: 1px solid var(--pico-muted-border-color);
+  background: var(--pico-card-background-color);
+  overflow-y: auto;
+}
+
+.gantt-grid-container {
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: calc(100vw - 350px);
+}
+
+.gantt-grid-container::-webkit-scrollbar {
+  height: 12px;
+}
+
+.gantt-grid-container::-webkit-scrollbar-track {
+  background: var(--pico-card-sectioning-background-color);
+  border-radius: 6px;
+}
+
+.gantt-grid-container::-webkit-scrollbar-thumb {
+  background: var(--pico-muted-border-color);
+  border-radius: 6px;
+}
+
+.gantt-grid-container::-webkit-scrollbar-thumb:hover {
+  background: var(--pico-primary);
+}
+
+.gantt-task-row {
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--pico-muted-border-color);
+  position: relative;
+  height: 50px;
+}
+
+.gantt-task-name {
+  padding: 0.5rem;
+  font-weight: 500;
+  font-size: 0.875rem;
+  color: var(--pico-color);
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-grid {
+  position: relative;
+  background: repeating-linear-gradient(90deg, 
+    var(--pico-card-background-color), 
+    var(--pico-card-background-color) 40px, 
+    var(--pico-card-sectioning-background-color) 40px, 
+    var(--pico-card-sectioning-background-color) 80px);
+  min-height: 100%;
+  min-width: max-content;
+  width: max-content;
+}
+
+.gantt-task-bar {
+  position: absolute;
+  top: 5px;
+  height: 40px;
+  border-radius: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.875rem;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: move;
+  transition: all 0.2s;
+  z-index: 2;
+  user-select: none;
+  border: 1px solid;
+}
+
+.gantt-task-bar:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  transform: translateY(-1px);
+  z-index: 3;
+}
+
+.gantt-task-bar.dragging {
+  opacity: 0.7;
+  cursor: grabbing;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  transform: translateY(-2px) scale(1.02);
+  z-index: 1000;
+}
+
+.gantt-task-bar.finished {
+  color: white;
+}
+
+.gantt-task-bar.conflict {
+  color: white;
+}
+
+.gantt-task-bar.dep-issue {
+  color: #212529;
+}
+
+.gantt-task-bar.shabbat {
+  color: #212529;
+  opacity: 0.8;
+}
+
+.gantt-task-label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* Resize handles */
+.gantt-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: ew-resize;
+  z-index: 10;
+  transition: background-color 0.2s;
+}
+
+.gantt-resize-handle:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.gantt-resize-left {
+  left: 0;
+  border-left: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.gantt-resize-right {
+  right: 0;
+  border-right: 2px solid rgba(255, 255, 255, 0.5);
+}
+
+.gantt-task-bar.resizing {
+  opacity: 0.8;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Responsive Gantt */
+@media (max-width: 768px) {
+  .gantt-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .gantt-date-controls {
+    justify-content: center;
+  }
+  
+  .gantt-header,
+  .gantt-content {
+    grid-template-columns: 200px 1fr;
+  }
+  
+  .gantt-left-panel {
+    min-width: 200px;
+  }
+  
+  .gantt-day-header {
+    min-width: 80px;
+  }
+  
+  .gantt-hour-header {
+    min-width: 15px;
+  }
 }
 
