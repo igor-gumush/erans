@@ -50,7 +50,6 @@ function loadGanttDates() {
         endDateInput.value = endDate.format('YYYY-MM-DD');
       }
       
-      console.log('Loaded saved Gantt dates:', startDate.format('YYYY-MM-DD'), 'to', endDate.format('YYYY-MM-DD'));
       loaded = true;
     }
   }
@@ -61,7 +60,6 @@ function loadGanttDates() {
     if (!isNaN(zoomLevel) && zoomLevel >= GANTT_CONFIG.minZoom && zoomLevel <= GANTT_CONFIG.maxZoom) {
       ganttState.zoomLevel = zoomLevel;
       document.getElementById('gantt-zoom-level').textContent = Math.round(zoomLevel * 100) + '%';
-      console.log('Loaded saved zoom level:', Math.round(zoomLevel * 100) + '%');
     }
   }
   
@@ -70,7 +68,6 @@ function loadGanttDates() {
 
 // Initialize Gantt chart
 function initGantt() {
-  console.log('Initializing Gantt chart...');
   setupGanttEventListeners();
   
   // Try to load saved dates, otherwise use defaults
@@ -79,7 +76,6 @@ function initGantt() {
   } else {
     renderGantt();
   }
-  console.log('Gantt chart initialized');
 }
 
 // Setup Gantt event listeners
@@ -130,10 +126,6 @@ function setupScrollSync() {
     
     gridContainer.addEventListener('scroll', syncGridToHeader);
     headerPanel.addEventListener('scroll', syncHeaderToGrid);
-    
-    console.log('Scroll synchronization setup complete');
-  } else {
-    console.log('Scroll sync elements not found:', { headerPanel, gridContainer });
   }
 }
 
@@ -187,7 +179,6 @@ function zoomGantt(factor) {
 
 // Render Gantt chart
 function renderGantt() {
-  console.log('Rendering Gantt chart...');
   if (!ganttState.startDate || !ganttState.endDate) {
     updateGanttDateRange();
   }
@@ -254,7 +245,6 @@ function renderGanttHeader() {
         const hourPosition = (dayStartHour + h) * GANTT_CONFIG.hourWidth * ganttState.zoomLevel;
         dayHours.push(`<div class="gantt-hour-header" style="width: ${hourWidth}px; left: ${hourPosition}px; position: absolute; z-index: 10;">${h}</div>`);
       }
-      console.log(`Created ${dayHours.length} hour headers for day ${current.format('YYYY-MM-DD')} starting at hour ${dayStartHour}`);
       hours.push(`<div class="gantt-day-hours" style="width: ${dayWidth}px; position: relative; height: 30px; overflow: visible;"></div>`);
       
       // Add hours directly to the hours row for better positioning
@@ -603,7 +593,6 @@ function getGanttWidth() {
 
 // Add vertical grid lines for hours
 function addVerticalGridLines(grid) {
-  console.log('Adding vertical grid lines...');
   // Remove existing grid lines
   grid.querySelectorAll('.gantt-vertical-line').forEach(line => line.remove());
   
@@ -627,12 +616,9 @@ function addVerticalGridLines(grid) {
     }
   }
   
-  console.log('Time range:', actualStart.format(), 'to', actualEnd.format());
-  
   // Create grid lines for the actual time range
   let current = actualStart.clone().startOf('hour');
   const endTime = actualEnd.clone().endOf('hour');
-  let lineCount = 0;
   
   while (current.isBefore(endTime) || current.isSame(endTime, 'hour')) {
     const position = calculateGanttTaskPosition(current);
@@ -651,13 +637,10 @@ function addVerticalGridLines(grid) {
         pointer-events: none;
       `;
       grid.appendChild(line);
-      lineCount++;
     }
     
     current = current.add(1, 'hour');
   }
-  
-  console.log('Added', lineCount, 'vertical grid lines');
 }
 
 // Auto-scroll to first task
@@ -665,16 +648,12 @@ let hasAutoScrolled = false;
 
 function autoScrollToFirstTask() {
   if (hasAutoScrolled) {
-    console.log('Auto-scroll already performed, skipping');
     return;
   }
   
-  console.log('Auto-scrolling to first task...');
   const jobs = getGanttJobs();
-  console.log('Jobs found:', jobs.length);
   
   if (jobs.length === 0) {
-    console.log('No jobs found, skipping auto-scroll');
     return;
   }
   
@@ -683,19 +662,13 @@ function autoScrollToFirstTask() {
     .filter(job => job.start && job.end)
     .sort((a, b) => dayjs(a.start).valueOf() - dayjs(b.start).valueOf())[0];
   
-  console.log('Earliest task:', earliestTask);
-  
   if (earliestTask) {
     const startTime = dayjs(earliestTask.start);
     const position = calculateGanttTaskPosition(startTime);
-    console.log('Task position:', position);
     
     // Scroll both header and grid to the first task
     const headerPanel = document.querySelector('.gantt-right-panel');
     const gridContainer = document.querySelector('.gantt-grid-container');
-    
-    console.log('Header panel found:', !!headerPanel);
-    console.log('Grid container found:', !!gridContainer);
     
     if (headerPanel && gridContainer) {
       // If task is at the very beginning, scroll to start
@@ -704,17 +677,10 @@ function autoScrollToFirstTask() {
         scrollPosition = Math.max(0, position - 100);
       }
       
-      console.log('Scrolling to position:', scrollPosition);
-      console.log('Current scroll positions - Header:', headerPanel.scrollLeft, 'Grid:', gridContainer.scrollLeft);
       headerPanel.scrollLeft = scrollPosition;
       gridContainer.scrollLeft = scrollPosition;
-      console.log('New scroll positions - Header:', headerPanel.scrollLeft, 'Grid:', gridContainer.scrollLeft);
       hasAutoScrolled = true;
-    } else {
-      console.log('Required elements not found for scrolling');
     }
-  } else {
-    console.log('No valid earliest task found');
   }
 }
 
@@ -778,6 +744,8 @@ function handleResize(e) {
     // Ensure start doesn't go past end (minimum 1 hour duration)
     if (newStart.isBefore(resizeState.originalEnd.clone().subtract(1, 'hour'))) {
       job.start = newStart.format();
+      // Update the visual position without full re-render
+      updateTaskBarPosition(job);
     }
   } else if (resizeState.edge === 'end') {
     // Resize from the right (change end time)
@@ -785,11 +753,27 @@ function handleResize(e) {
     // Ensure end doesn't go before start (minimum 1 hour duration)
     if (newEnd.isAfter(resizeState.originalStart.clone().add(1, 'hour'))) {
       job.end = newEnd.format();
+      // Update the visual position without full re-render
+      updateTaskBarPosition(job);
     }
   }
+}
+
+// Update task bar position without full re-render
+function updateTaskBarPosition(job) {
+  const bar = document.querySelector(`.gantt-task-bar[data-job-id="${job.id}"]`);
+  if (!bar) return;
   
-  // Update the display without full refresh for smoother experience
-  renderGantt();
+  const startTime = dayjs(job.start);
+  const endTime = dayjs(job.end);
+  
+  if (!startTime.isValid() || !endTime.isValid()) return;
+  
+  const position = calculateGanttTaskPosition(startTime);
+  const width = calculateGanttTaskWidth(startTime, endTime);
+  
+  bar.style.left = position + 'px';
+  bar.style.width = width + 'px';
 }
 
 function stopResize(e) {
@@ -823,8 +807,5 @@ function stopResize(e) {
 
 // Initialize Gantt when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
-  // Initialize Gantt after a short delay to ensure main app is loaded
-  setTimeout(() => {
-    console.log('Gantt.js loaded');
-  }, 100);
+  // Gantt will be initialized when the tab is clicked
 });
