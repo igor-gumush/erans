@@ -7,7 +7,7 @@ dayjs.extend(dayjs_plugin_minMax);
 const TZ = 'Asia/Jerusalem';
 
 // In-memory store
-/** @type {Array<{id:string,title:string,factory:string,worker:string,factoryManager:string,maintenanceManager:string,priority:string,equipmentNumber:string,serviceCall:string,department:string,start:string,end:string,notes:string,dependsOn:string,finished:boolean}>} */
+/** @type {Array<{id:string,title:string,factory:string,workers:string[],factoryManager:string,maintenanceManager:string,priority:string,equipmentNumber:string,serviceCall:string,department:string,start:string,end:string,notes:string,dependsOn:string,finished:boolean}>} */
 let JOBS = [];
 let nextId = 1;
 
@@ -93,8 +93,11 @@ function recomputeConflicts(){
   // For each worker, check overlapping intervals
   const byWorker = new Map();
   JOBS.forEach(j=>{
-    if(!byWorker.has(j.worker)) byWorker.set(j.worker, []);
-    byWorker.get(j.worker).push(j);
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    workers.forEach(worker => {
+      if(!byWorker.has(worker)) byWorker.set(worker, []);
+      byWorker.get(worker).push(j);
+    });
   });
   const conflicted = new Set();
   for(const [w, arr] of byWorker){
@@ -183,16 +186,19 @@ function updateFormDropdowns(){
     fSel.value = currentFactory;
   }
 
-  // Update worker dropdown
-  const wSel = $('#f-worker');
-  const currentWorker = wSel.value;
+  // Update worker multi-select checkboxes
+  const wOptions = $('#f-worker-options');
+  const currentWorkers = getSelectedWorkers();
   const workers = Array.from(WORKERS).sort();
-  wSel.innerHTML = '<option value="">בחר עובד מבצע...</option>' + 
-    workers.map(v=>`<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('') +
-    '<option value="__add_new__">➕ הוסף עובד מבצע חדש</option>';
-  if(currentWorker && WORKERS.has(currentWorker)) {
-    wSel.value = currentWorker;
-  }
+  wOptions.innerHTML = workers.map(v=>`
+    <div class="multi-select-option">
+      <input type="checkbox" id="worker-${escapeHtml(v)}" value="${escapeHtml(v)}" ${currentWorkers.includes(v) ? 'checked' : ''}>
+      <label for="worker-${escapeHtml(v)}">${escapeHtml(v)}</label>
+    </div>
+  `).join('');
+  
+  // Update selected workers display
+  updateWorkerDisplay();
 
   // Update factory manager dropdown
   const fmSel = $('#f-factoryManager');
@@ -231,7 +237,11 @@ function updateFormDropdowns(){
   const dSel = $('#f-dependsOn');
   const currentDep = dSel.value;
   dSel.innerHTML = '<option value="">ללא תלות</option>' + 
-    JOBS.map(j=>`<option value="${j.id}">${escapeHtml(j.title||'ללא כותרת')} (${escapeHtml(j.worker||'ללא עובד מבצע')})</option>`).join('');
+    JOBS.map(j=>{
+      const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+      const workersStr = workers.length > 0 ? workers.join(', ') : 'ללא עובד מבצע';
+      return `<option value="${j.id}">${escapeHtml(j.title||'ללא כותרת')} (${escapeHtml(workersStr)})</option>`;
+    }).join('');
   if(currentDep) {
     dSel.value = currentDep;
   }
@@ -239,7 +249,13 @@ function updateFormDropdowns(){
 
 function refreshFilters(){
   const factories = unique(JOBS.map(j=>j.factory));
-  const workers = unique(JOBS.map(j=>j.worker));
+  // Collect all workers from all jobs (flattening the arrays)
+  const workersSet = new Set();
+  JOBS.forEach(j => {
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    workers.forEach(w => { if(w) workersSet.add(w); });
+  });
+  const workers = Array.from(workersSet).filter(Boolean).sort();
   const factoryManagers = unique(JOBS.map(j=>j.factoryManager));
   const maintenanceManagers = unique(JOBS.map(j=>j.maintenanceManager));
   const priorities = unique(JOBS.map(j=>j.priority));
@@ -280,7 +296,11 @@ function passFilters(j){
   const depIssues = recomputeDependencyIssues();
   
   if(ff && j.factory!==ff) return false;
-  if(fw && j.worker!==fw) return false;
+  // Check if any of the workers match the filter
+  if(fw) {
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    if(!workers.includes(fw)) return false;
+  }
   if(ffm && j.factoryManager!==ffm) return false;
   if(fmm && j.maintenanceManager!==fmm) return false;
   if(fp && j.priority!==fp) return false;
@@ -418,11 +438,15 @@ function renderTable(){
     const finishTitle = isFinished ? 'סמן כלא הושלם' : 'סמן כהושלם';
     const finishClass = isFinished ? 'btn-icon' : 'btn-icon btn-icon-success';
     
+    // Format workers - handle both old string format and new array format
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    const workersDisplay = workers.length > 0 ? workers.join(', ') : '';
+    
     tr.innerHTML = `
       <td>${idx+1}</td>
       <td data-column="title">${isFinished ? '<s>'+escapeHtml(j.title||'')+'</s>' : escapeHtml(j.title||'')}</td>
       <td data-column="factory">${escapeHtml(j.factory||'')}</td>
-      <td data-column="worker">${escapeHtml(j.worker||'')}</td>
+      <td data-column="worker">${escapeHtml(workersDisplay)}</td>
       <td data-column="factoryManager">${escapeHtml(j.factoryManager||'')}</td>
       <td data-column="maintenanceManager">${escapeHtml(j.maintenanceManager||'')}</td>
       <td data-column="priority">${escapeHtml(j.priority||'')}</td>
@@ -489,12 +513,16 @@ function renderTimeline(){
     // Collect workers who have conflicts or dependency issues
     JOBS.forEach(job => {
       if(conflicted.has(job.id) || depIssues.has(job.id)) {
-        workersWithIssues.add(job.worker);
+        const workers = Array.isArray(job.workers) ? job.workers : (job.worker ? [job.worker] : []);
+        workers.forEach(w => workersWithIssues.add(w));
       }
     });
     
     // Filter to show ALL tasks for workers with issues
-    jobs = jobs.filter(job => workersWithIssues.has(job.worker));
+    jobs = jobs.filter(job => {
+      const workers = Array.isArray(job.workers) ? job.workers : (job.worker ? [job.worker] : []);
+      return workers.some(w => workersWithIssues.has(w));
+    });
     
     // Apply other filters (factory, worker, etc.) but skip the conflict/dependency filters
     // since we already handled them above
@@ -541,8 +569,22 @@ function renderTimeline(){
   const host = $('#timeline'); host.innerHTML='';
   $('#emptyTimeline').style.display = jobs.length? 'none':'block';
 
+  // Group jobs by worker - handle multiple workers per job
   const byWorker = new Map();
-  jobs.forEach(j=>{ if(!byWorker.has(j.worker)) byWorker.set(j.worker, []); byWorker.get(j.worker).push(j); });
+  jobs.forEach(j=>{
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    if(workers.length === 0) {
+      // If no workers, add to a special "(ללא עובד מבצע)" lane
+      if(!byWorker.has('')) byWorker.set('', []);
+      byWorker.get('').push(j);
+    } else {
+      // Add job to each worker's lane
+      workers.forEach(worker => {
+        if(!byWorker.has(worker)) byWorker.set(worker, []);
+        byWorker.get(worker).push(j);
+      });
+    }
+  });
   const conflicts = recomputeConflicts();
   const depIssues = recomputeDependencyIssues();
 
@@ -950,11 +992,59 @@ function refreshAll(){
 
 function escapeHtml(s){ return (s||'').replace(/[&<>"']/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c])); }
 
+// Helper functions for multi-select worker component
+function getSelectedWorkers() {
+  const options = $('#f-worker-options');
+  if (!options) return [];
+  const checkboxes = $$('#f-worker-options input[type="checkbox"]:checked');
+  return checkboxes.map(cb => cb.value);
+}
+
+function updateWorkerDisplay() {
+  const selected = getSelectedWorkers();
+  const display = $('#f-worker-selected');
+  if (!display) return;
+  
+  if (selected.length === 0) {
+    display.innerHTML = '<span class="placeholder">בחר עובדים מבצעים...</span>';
+  } else {
+    display.innerHTML = selected.map(worker => 
+      `<span class="worker-tag">${escapeHtml(worker)} <span class="remove" data-worker="${escapeHtml(worker)}">×</span></span>`
+    ).join('');
+  }
+  
+  // Add click handlers for remove buttons
+  $$('#f-worker-selected .remove').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const worker = btn.dataset.worker;
+      // Find checkbox by value instead of ID (safer with special characters)
+      const checkboxes = $$('#f-worker-options input[type="checkbox"]');
+      const checkbox = checkboxes.find(cb => cb.value === worker);
+      if (checkbox) {
+        checkbox.checked = false;
+        updateWorkerDisplay();
+      }
+    });
+  });
+}
+
+function toggleWorkerDropdown() {
+  const dropdown = $('#f-worker-dropdown');
+  const isVisible = dropdown.style.display !== 'none';
+  dropdown.style.display = isVisible ? 'none' : 'block';
+}
+
+function closeWorkerDropdown() {
+  $('#f-worker-dropdown').style.display = 'none';
+}
+
 // Add / Edit / Delete
 function getForm(){
   const title = $('#f-title').value.trim();
   const factory = $('#f-factory').value;
-  const worker = $('#f-worker').value;
+  // Get selected workers from checkboxes
+  const workers = getSelectedWorkers();
   const factoryManager = $('#f-factoryManager').value;
   const maintenanceManager = $('#f-maintenanceManager').value;
   const priority = $('#f-priority').value;
@@ -965,13 +1055,24 @@ function getForm(){
   const end = roundTo15($('#f-end').value);
   const dependsOn = $('#f-dependsOn').value;
   const notes = $('#f-notes').value.trim();
-  return { title, factory, worker, factoryManager, maintenanceManager, priority, equipmentNumber, serviceCall, department, start, end, dependsOn, notes };
+  return { title, factory, workers, factoryManager, maintenanceManager, priority, equipmentNumber, serviceCall, department, start, end, dependsOn, notes };
 }
 
 function setForm(j){
   $('#f-title').value = j?.title||'';
   $('#f-factory').value = j?.factory||'';
-  $('#f-worker').value = j?.worker||'';
+  
+  // Set selected workers in checkboxes
+  const workers = j?.workers ? (Array.isArray(j.workers) ? j.workers : [j.workers]) : (j?.worker ? [j.worker] : []);
+  // First uncheck all
+  $$('#f-worker-options input[type="checkbox"]').forEach(cb => cb.checked = false);
+  // Then check the selected ones
+  workers.forEach(worker => {
+    const checkbox = $(`#f-worker-options input[value="${worker}"]`);
+    if (checkbox) checkbox.checked = true;
+  });
+  updateWorkerDisplay();
+  
   $('#f-factoryManager').value = j?.factoryManager||'';
   $('#f-maintenanceManager').value = j?.maintenanceManager||'';
   $('#f-priority').value = j?.priority||'';
@@ -996,6 +1097,9 @@ function openJobModal(job = null) {
   const modal = $('#jobModal');
   const modalTitle = $('#modalTitle');
   const deleteBtn = $('#btnDeleteModal');
+  
+  // Make sure dropdowns are populated
+  updateFormDropdowns();
   
   if (job) {
     modalTitle.textContent = 'ערוך משימה';
@@ -1122,7 +1226,10 @@ function initEventListeners(){
   });
 
   // Reset form in modal
-  $('#btnResetModal').addEventListener('click', ()=>{ setForm({}); });
+  $('#btnResetModal').addEventListener('click', ()=>{ 
+    setForm({});
+    updateWorkerDisplay();
+  });
 
   // Delete job from modal
   $('#btnDeleteModal').addEventListener('click', ()=>{
@@ -1265,16 +1372,40 @@ function initEventListeners(){
     }
   });
 
-  // Handle "Add new worker" option
-  $('#f-worker').addEventListener('change', (e)=>{
-    if(e.target.value === '__add_new__') {
-      const newWorker = prompt('הזן שם עובד מבצע חדש:');
-      if(newWorker && newWorker.trim()) {
-        WORKERS.add(newWorker.trim());
-        updateFormDropdowns();
-        $('#f-worker').value = newWorker.trim();
-      } else {
-        $('#f-worker').value = '';
+  // Handle multi-select worker component
+  $('#f-worker-selected').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleWorkerDropdown();
+  });
+  
+  // Close dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const container = $('#f-worker-container');
+    if (container && !container.contains(e.target)) {
+      closeWorkerDropdown();
+    }
+  });
+  
+  // Handle checkbox changes
+  document.addEventListener('change', (e) => {
+    if (e.target.matches('#f-worker-options input[type="checkbox"]')) {
+      updateWorkerDisplay();
+    }
+  });
+  
+  // Handle "Add new worker" button
+  $('#btn-add-worker').addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const newWorker = prompt('הזן שם עובד מבצע חדש:');
+    if(newWorker && newWorker.trim()) {
+      WORKERS.add(newWorker.trim());
+      updateFormDropdowns();
+      // Auto-select the new worker
+      const checkbox = $(`#f-worker-options input[value="${newWorker.trim()}"]`);
+      if (checkbox) {
+        checkbox.checked = true;
+        updateWorkerDisplay();
       }
     }
   });
@@ -1376,14 +1507,16 @@ async function handleFile(evt){
   // Import all mapped fields
   const imported = json.map(row=>{
     const factory = String(row[colFactory]||'').trim();
-    const worker = String(row[colWorker]||'').trim();
+    // Handle multiple workers - split by comma or semicolon
+    const workerStr = String(row[colWorker]||'').trim();
+    const workers = workerStr ? workerStr.split(/[,;]/).map(w => w.trim()).filter(Boolean) : [];
     const factoryManager = String(row[colFactoryManager]||'').trim();
     const maintenanceManager = String(row[colMaintenanceManager]||'').trim();
     const department = String(row[colDepartment]||'').trim();
     
     // Add to sets
     if(factory) FACTORIES.add(factory);
-    if(worker) WORKERS.add(worker);
+    workers.forEach(w => { if(w) WORKERS.add(w); });
     if(factoryManager) FACTORY_MANAGERS.add(factoryManager);
     if(maintenanceManager) MAINTENANCE_MANAGERS.add(maintenanceManager);
     if(department) DEPARTMENTS.add(department);
@@ -1404,7 +1537,7 @@ async function handleFile(evt){
       id: uid(),
       title: String(row[colTitle]||'').trim(),
       factory: factory,
-      worker: worker,
+      workers: workers,
       factoryManager: factoryManager,
       maintenanceManager: maintenanceManager,
       priority: String(row[colPriority]||'').trim(),
@@ -1442,10 +1575,12 @@ function exportExcel(){
   
   const rows = JOBS.map(j=>{
     const depInfo = j.dependsOn ? JOBS.find(dj=>dj.id===j.dependsOn) : null;
+    const workers = Array.isArray(j.workers) ? j.workers : (j.worker ? [j.worker] : []);
+    const workersStr = workers.join(', ');
     return {
       'משימה': j.title, 
       'מפעל': j.factory, 
-      'עובד מבצע': j.worker,
+      'עובד מבצע': workersStr,
       'מפקח עבודה': j.factoryManager,
       'מנהל עבודה': j.maintenanceManager,
       'עדיפות': j.priority,
@@ -1475,7 +1610,7 @@ function seed(){
       id: '1',
       title: 'תחזוקת קו A',
       factory: 'מפעל צפון',
-      worker: 'יוסי כהן',
+      workers: ['יוסי כהן'],
       factoryManager: 'דוד לוי',
       maintenanceManager: 'שרה גולד',
       priority: 'גבוהה',
@@ -1492,7 +1627,7 @@ function seed(){
       id: '2',
       title: 'החלפת חלק בקו B',
       factory: 'מפעל דרום',
-      worker: 'מיכל אברהם',
+      workers: ['מיכל אברהם', 'יוסי כהן'],
       factoryManager: 'רונן שטרן',
       maintenanceManager: 'שרה גולד',
       priority: 'דחופה',
@@ -1502,14 +1637,14 @@ function seed(){
       start: now.hour(10).minute(0).format(),
       end: now.hour(14).minute(0).format(),
       dependsOn: '1',
-      notes: 'החלפת מנוע',
+      notes: 'החלפת מנוע - דורש שני עובדים',
       finished: false
     },
     {
       id: '3',
       title: 'בדיקת בטיחות',
       factory: 'מפעל צפון',
-      worker: 'יוסי כהן',
+      workers: ['יוסי כהן'],
       factoryManager: 'דוד לוי',
       maintenanceManager: 'שרה גולד',
       priority: 'בינונית',
@@ -1526,7 +1661,7 @@ function seed(){
       id: '4',
       title: 'תחזוקת קו C',
       factory: 'מפעל דרום',
-      worker: 'מיכל אברהם',
+      workers: ['מיכל אברהם', 'דני לוי'],
       factoryManager: 'רונן שטרן',
       maintenanceManager: 'שרה גולד',
       priority: 'נמוכה',
@@ -1536,7 +1671,7 @@ function seed(){
       start: now.add(2, 'day').hour(14).minute(0).format(),
       end: now.add(2, 'day').hour(18).minute(0).format(),
       dependsOn: '',
-      notes: 'תחזוקה שבועית',
+      notes: 'תחזוקה שבועית - דורש צוות',
       finished: false
     }
   ];
@@ -1544,13 +1679,14 @@ function seed(){
   // Update sets
   JOBS.forEach(job => {
     if (job.factory) FACTORIES.add(job.factory);
-    if (job.worker) WORKERS.add(job.worker);
+    const workers = Array.isArray(job.workers) ? job.workers : (job.worker ? [job.worker] : []);
+    workers.forEach(w => { if(w) WORKERS.add(w); });
     if (job.factoryManager) FACTORY_MANAGERS.add(job.factoryManager);
     if (job.maintenanceManager) MAINTENANCE_MANAGERS.add(job.maintenanceManager);
     if (job.department) DEPARTMENTS.add(job.department);
   });
   
-  nextId = 4;
+  nextId = 5;
 }
 
 function loadFromLocalStorage(){
@@ -1568,14 +1704,27 @@ function loadFromLocalStorage(){
     MAINTENANCE_MANAGERS.clear();
     DEPARTMENTS.clear();
     JOBS.forEach(j=>{
+      // Migrate old worker string format to new workers array format
+      if(j.worker && !j.workers) {
+        j.workers = [j.worker];
+        delete j.worker;
+      }
       if(j.factory) FACTORIES.add(j.factory);
-      if(j.worker) WORKERS.add(j.worker);
+      const workers = Array.isArray(j.workers) ? j.workers : [];
+      workers.forEach(w => { if(w) WORKERS.add(w); });
       if(j.factoryManager) FACTORY_MANAGERS.add(j.factoryManager);
       if(j.maintenanceManager) MAINTENANCE_MANAGERS.add(j.maintenanceManager);
       if(j.department) DEPARTMENTS.add(j.department);
     });
   } else {
     JOBS = data.jobs || [];
+    // Migrate old worker string format to new workers array format
+    JOBS.forEach(j=>{
+      if(j.worker && !j.workers) {
+        j.workers = [j.worker];
+        delete j.worker;
+      }
+    });
     FACTORIES = new Set(data.factories || []);
     WORKERS = new Set(data.workers || []);
     FACTORY_MANAGERS = new Set(data.factoryManagers || []);
@@ -1607,19 +1756,125 @@ function toggleTheme() {
   setTheme(newTheme);
 }
 
+// Auto-load db.xlsx if it exists
+async function autoLoadDatabase() {
+  try {
+    const response = await fetch('db.xlsx');
+    if (!response.ok) {
+      return false;
+    }
+    
+    const arrayBuffer = await response.arrayBuffer();
+    const wb = XLSX.read(arrayBuffer, { type: 'array' });
+    const wsName = wb.SheetNames[0];
+    const ws = wb.Sheets[wsName];
+    const json = XLSX.utils.sheet_to_json(ws, { defval: '' });
+    
+    if (!json.length) {
+      console.log('db.xlsx is empty');
+      return false;
+    }
+    
+    // Column mapping - auto-detect common patterns
+    const headers = Object.keys(json[0]);
+    const findCol = (patterns) => headers.find(h => patterns.some(p => p.test(h))) || '';
+    
+    const colTitle = findCol([/title|job|task|משימה|name|שם/i]);
+    const colFactory = findCol([/factory|מפעל|plant|facility/i]);
+    const colWorker = findCol([/worker|עובד|employee|staff|מבצע|executor/i]);
+    const colFactoryManager = findCol([/factory.*manager|מפקח|supervisor|supervise|מנהל.*מפעל/i]);
+    const colMaintenanceManager = findCol([/maintenance.*manager|מנהל.*עבודה|maintenance|אחזקה/i]);
+    const colPriority = findCol([/priority|עדיפות|urgent|importance/i]);
+    const colEquipmentNumber = findCol([/equipment|ציוד|number|מספר|machine|device|מכונה/i]);
+    const colServiceCall = findCol([/service.*call|קריאת.*שירות|service|ticket|call|שירות/i]);
+    const colDepartment = findCol([/department|מחלקה|dept|unit|יחידה/i]);
+    const colStart = findCol([/start|begin|התחלה|from|start.*time|start.*date/i]);
+    const colEnd = findCol([/end|finish|סיום|to|end.*time|end.*date|due/i]);
+    const colDependsOn = findCol([/depend|תלוי|dependency|prerequisite|קודם/i]);
+    const colNotes = findCol([/note|remark|remarks|הערה|comment|comments|הערות|תיאור|description|desc|details|פרטים/i]);
+    
+    // Clear existing data before importing
+    JOBS = [];
+    FACTORIES.clear();
+    WORKERS.clear();
+    FACTORY_MANAGERS.clear();
+    MAINTENANCE_MANAGERS.clear();
+    DEPARTMENTS.clear();
+    nextId = 1;
+    
+    // Import data
+    const imported = json.map(row => {
+      const factory = String(row[colFactory] || '').trim();
+      const workerStr = String(row[colWorker] || '').trim();
+      const workers = workerStr ? workerStr.split(/[,;]/).map(w => w.trim()).filter(Boolean) : [];
+      const factoryManager = String(row[colFactoryManager] || '').trim();
+      const maintenanceManager = String(row[colMaintenanceManager] || '').trim();
+      const department = String(row[colDepartment] || '').trim();
+      
+      // Add to sets
+      if (factory) FACTORIES.add(factory);
+      workers.forEach(w => { if (w) WORKERS.add(w); });
+      if (factoryManager) FACTORY_MANAGERS.add(factoryManager);
+      if (maintenanceManager) MAINTENANCE_MANAGERS.add(maintenanceManager);
+      if (department) DEPARTMENTS.add(department);
+      
+      // Parse dates
+      let startDate = '';
+      let endDate = '';
+      if (colStart && row[colStart]) {
+        const start = dayjs(row[colStart]);
+        startDate = start.isValid() ? start.format() : '';
+      }
+      if (colEnd && row[colEnd]) {
+        const end = dayjs(row[colEnd]);
+        endDate = end.isValid() ? end.format() : '';
+      }
+      
+      return {
+        id: uid(),
+        title: String(row[colTitle] || '').trim(),
+        factory: factory,
+        workers: workers,
+        factoryManager: factoryManager,
+        maintenanceManager: maintenanceManager,
+        priority: String(row[colPriority] || '').trim(),
+        equipmentNumber: String(row[colEquipmentNumber] || '').trim(),
+        serviceCall: String(row[colServiceCall] || '').trim(),
+        department: department,
+        start: startDate,
+        end: endDate,
+        dependsOn: String(row[colDependsOn] || '').trim(),
+        notes: String(row[colNotes] || '').trim(),
+        finished: false
+      };
+    });
+    
+    JOBS = imported;
+    console.log(`Loaded ${imported.length} jobs from db.xlsx`);
+    return true;
+  } catch (error) {
+    console.log('db.xlsx not found or error loading:', error.message);
+    return false;
+  }
+}
+
 // Initialize on DOM ready
-document.addEventListener('DOMContentLoaded', ()=>{
+document.addEventListener('DOMContentLoaded', async ()=>{
   // Initialize theme
   initTheme();
   
   // Load column visibility settings
   loadColumnVisibility();
   
-  // Try to load from localStorage first, if not found, seed with demo data
-  const loaded = loadFromLocalStorage();
-  if(!loaded) {
-    seed();
+  // Try to load from db.xlsx first, then localStorage, then seed with demo data
+  const dbLoaded = await autoLoadDatabase();
+  if (!dbLoaded) {
+    const localStorageLoaded = loadFromLocalStorage();
+    if (!localStorageLoaded) {
+      seed();
+    }
   }
+  
   initEventListeners();
   refreshAll();
 });
